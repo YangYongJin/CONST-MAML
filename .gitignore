@@ -4,7 +4,6 @@
 *.json
 *.zip
 
-datasets/
 log/
 log_pretrained/
 omniglot*/
