@@ -39,6 +39,7 @@ class MAMLFewShotClassifier(nn.Module):
         self.use_cuda = args.use_cuda
         self.im_shape = im_shape
         self.current_epoch = 0
+        self.num_aug = 2
 
         self.rng = set_torch_seed(seed=args.seed)
         self.classifier = VGGReLUNormNetwork(im_shape=self.im_shape, num_output_classes=self.args.
@@ -81,11 +82,8 @@ class MAMLFewShotClassifier(nn.Module):
 
             self.device = torch.cuda.current_device()
 
-        transformers = torch.nn.Sequential(
-            transforms.RandomAffine(5),
-        )
-        scripted_transforms = torch.jit.script(transformers)
-        self.augmentation = scripted_transforms
+        transformers = self.get_simclr_pipeline_transform()
+        self.augmentation = torch.jit.script(transformers)
 
     def get_per_step_loss_importance_vector(self):
         """
@@ -112,6 +110,27 @@ class MAMLFewShotClassifier(nn.Module):
         loss_weights[-1] = curr_value
         loss_weights = torch.Tensor(loss_weights).to(device=self.device)
         return loss_weights
+
+    def get_simclr_pipeline_transform(self, size=28, s=1):
+        """Return a set of data augmentation transformations as described in the SimCLR paper."""
+
+        if self.args.dataset_name == "mini_imagenet_full_size":
+            size = 84
+            color_jitter = transforms.ColorJitter(
+                0.8 * s, 0.8 * s, 0.8 * s, 0.2 * s)
+            data_transforms = torch.nn.Sequential(transforms.RandomResizedCrop(size=size),
+                                                  transforms.RandomHorizontalFlip(),
+                                                  transforms.RandomApply(
+                [color_jitter], p=0.8),
+                transforms.RandomGrayscale(
+                p=0.2),
+                transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 2.0)))
+
+        elif self.args.dataset_name == "omniglot_dataset":
+            data_transforms = torch.nn.Sequential(transforms.RandomResizedCrop(size=size),
+                                                  transforms.RandomHorizontalFlip(),
+                                                  transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)))
+        return data_transforms
 
     def info_nce_loss(self, features):
 
